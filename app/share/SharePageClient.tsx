@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount } from "wagmi";
 import { isAddress } from "viem";
 import { Button } from "../components/DemoComponents";
 import { Icon } from "../components/DemoComponents";
@@ -45,9 +44,7 @@ export default function SharePageClient({
   searchParams: { membership?: string; referrer?: string };
 }) {
   const router = useRouter();
-  const { address } = useAccount();
   const [membershipName, setMembershipName] = useState<string | null>(null);
-  const [referrer, setReferrer] = useState<string | null>(null);
   const [validReferrer, setValidReferrer] = useState<`0x${string}` | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -57,7 +54,6 @@ export default function SharePageClient({
       const membership = searchParams?.membership || null;
       const referrerParam = searchParams?.referrer || null;
       setMembershipName(membership);
-      setReferrer(referrerParam);
       
       // Validate referrer address
       const validatedReferrer = referrerParam && isAddress(referrerParam)
@@ -85,7 +81,7 @@ export default function SharePageClient({
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <h1 className="text-2xl font-bold mb-4">Membership Not Found</h1>
         <p className="text-[var(--app-foreground-muted)] mb-4">
-          The membership you're looking for doesn't exist.
+          The membership you&apos;re looking for doesn&apos;t exist.
         </p>
         <Button onClick={() => router.push("/")}>Go to Home</Button>
       </div>
@@ -102,7 +98,7 @@ export default function SharePageClient({
             </h1>
             {validReferrer && (
               <p className="text-[var(--app-foreground-muted)] text-sm">
-                You've been invited to join by a member!
+                You&apos;ve been invited to join by a member!
               </p>
             )}
           </div>
@@ -127,7 +123,7 @@ export default function SharePageClient({
           </div>
 
           <div className="bg-[var(--app-card-bg)] backdrop-blur-md rounded-xl shadow-lg border border-[var(--app-card-border)] p-6">
-            <h3 className="text-lg font-semibold mb-4">What's Included:</h3>
+            <h3 className="text-lg font-semibold mb-4">What&apos;s Included:</h3>
             <ul className="space-y-2">
               {membership.name === "Creator" && (
                 <>

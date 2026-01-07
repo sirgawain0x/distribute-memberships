@@ -12,7 +12,6 @@ import {
 import unlockAbiJson from "../../lib/abis/Unlock.json";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { getUnlockPaywallCheckoutUrl } from "../utils/unlockPaywall";
 import { useToast } from "./Toast";
 
 type ButtonProps = {
@@ -443,11 +442,6 @@ export function Home({ setActiveTab }: HomeProps) {
     }
 
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    // Use Unlock paywall checkout URL with referrer
-    const paywallUrl = getUnlockPaywallCheckoutUrl(
-      address as `0x${string}`,
-      `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`,
-    );
     
     // Also create a share page URL for better social media previews
     const shareUrl = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
@@ -461,7 +455,7 @@ export function Home({ setActiveTab }: HomeProps) {
           url: shareUrl,
         });
         showToast("Share dialog opened", "success");
-      } catch (err) {
+      } catch {
         // User cancelled or error occurred, fall back to clipboard
         await navigator.clipboard.writeText(shareUrl);
         showToast("Share link copied to clipboard!", "success");
@@ -859,7 +853,6 @@ const APPLICATION_ADDRESSES: Record<string, `0x${string}` | null> = {
 function MyMemberships() {
   const { address } = useAccount();
   const publicClient = usePublicClient();
-  const { data: walletClient } = useWalletClient();
   const { showToast } = useToast();
   const [memberships, setMemberships] = useState<
     Array<{
@@ -986,7 +979,7 @@ function MyMemberships() {
               name: membership.name,
               hasAccess: Boolean(hasAccess),
             };
-          } catch (error) {
+          } catch {
             return {
               name: membership.name,
               hasAccess: false,
@@ -1093,11 +1086,6 @@ function MyMemberships() {
     }
 
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    // Use Unlock paywall checkout URL with referrer
-    const paywallUrl = getUnlockPaywallCheckoutUrl(
-      address as `0x${string}`,
-      `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`,
-    );
     
     // Create share page URL for better social media previews
     const shareUrl = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
@@ -1111,7 +1099,7 @@ function MyMemberships() {
           url: shareUrl,
         });
         showToast("Share dialog opened", "success");
-      } catch (err) {
+      } catch {
         // User cancelled or error occurred, fall back to clipboard
         await navigator.clipboard.writeText(shareUrl);
         showToast("Referral link copied to clipboard!", "success");

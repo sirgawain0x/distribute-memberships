@@ -19,6 +19,7 @@ import {
   WalletDropdownDisconnect,
 } from "@coinbase/onchainkit/wallet";
 import { useEffect, useMemo, useState, useCallback, Suspense } from "react";
+import Image from "next/image";
 import { Button } from "./components/DemoComponents";
 import { Icon } from "./components/DemoComponents";
 import { Home } from "./components/DemoComponents";
@@ -93,14 +94,17 @@ export default function App() {
               <Wallet className="z-10">
                 <ConnectWallet>
                   {context?.user?.pfpUrl ? (
-                    <img
+                    <Image
                       src={context.user.pfpUrl}
                       alt={
                         context.user.displayName ||
                         context.user.username ||
                         "User"
                       }
+                      width={32}
+                      height={32}
                       className="w-8 h-8 rounded-full object-cover"
+                      unoptimized={true}
                     />
                   ) : (
                     <Name className="text-inherit" />

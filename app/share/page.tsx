@@ -5,9 +5,10 @@ import SharePageClient from "./SharePageClient";
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: { membership?: string; referrer?: string };
+  searchParams: Promise<{ membership?: string; referrer?: string }>;
 }): Promise<Metadata> {
-  const membershipName = searchParams?.membership || "Creator";
+  const params = await searchParams;
+  const membershipName = params?.membership || "Creator";
   const baseUrl = process.env.NEXT_PUBLIC_URL || "http://localhost:3000";
 
   const membershipTitles = {
@@ -56,18 +57,19 @@ export async function generateMetadata({
   };
 }
 
-export default function SharePage({
+export default async function SharePage({
   searchParams,
 }: {
-  searchParams: { membership?: string; referrer?: string };
+  searchParams: Promise<{ membership?: string; referrer?: string }>;
 }) {
+  const params = await searchParams;
   return (
     <Suspense
       fallback={
         <div style={{ padding: 32 }}>Loading membership share...</div>
       }
     >
-      <SharePageClient searchParams={searchParams} />
+      <SharePageClient searchParams={params} />
     </Suspense>
   );
 }

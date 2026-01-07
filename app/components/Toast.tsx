@@ -64,13 +64,6 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
     warning: "bg-yellow-500 dark:bg-yellow-600 border-yellow-600 dark:border-yellow-700",
   };
 
-  const iconMap = {
-    success: "check",
-    error: "x",
-    info: "info",
-    warning: "alert",
-  } as const;
-
   return (
     <div
       className={`
