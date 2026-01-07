@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useAccount, useWalletClient, usePublicClient } from "wagmi";
-import { encodeAbiParameters, parseUnits, type Abi, formatUnits } from "viem";
+import { encodeAbiParameters, parseUnits, type Abi, formatUnits, isAddress } from "viem";
 import { erc20Abi } from "viem";
 import {
   Transaction,
@@ -11,13 +11,16 @@ import {
 } from "@coinbase/onchainkit/transaction";
 import unlockAbiJson from "../../lib/abis/Unlock.json";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
+import { getUnlockPaywallCheckoutUrl } from "../utils/unlockPaywall";
+import { useToast } from "./Toast";
 
 type ButtonProps = {
   children: ReactNode;
   variant?: "primary" | "secondary" | "outline" | "ghost";
   size?: "sm" | "md" | "lg";
   className?: string;
-  onClick?: () => void;
+  onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
   icon?: ReactNode;
@@ -298,6 +301,14 @@ export function Home({ setActiveTab }: HomeProps) {
   const { address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
+  const searchParams = useSearchParams();
+  const { showToast } = useToast();
+  
+  // Get referrer from URL params
+  const referrerAddress = searchParams.get("referrer");
+  const referrer = referrerAddress && isAddress(referrerAddress) 
+    ? (referrerAddress as `0x${string}`)
+    : ZERO_ADDRESS;
 
   // Fetch USDC balance when wallet is connected
   useEffect(() => {
@@ -377,13 +388,11 @@ export function Home({ setActiveTab }: HomeProps) {
               ],
             });
           } catch {
-            alert("Please add the Base network to your wallet to continue.");
+            showToast("Please add the Base network to your wallet to continue.", "error");
             return;
           }
         } else {
-          alert(
-            "Please switch to the Base network in your wallet to continue.",
-          );
+          showToast("Please switch to the Base network in your wallet to continue.", "error");
           return;
         }
       }
@@ -426,6 +435,44 @@ export function Home({ setActiveTab }: HomeProps) {
     ? usdcBalance >= parseUnits(selected.price, selected.decimals)
     : true;
 
+  // Share membership with referral code
+  async function handleShareMembership(membership: (typeof MEMBERSHIPS)[0]) {
+    if (!address) {
+      showToast("Please connect your wallet to share a membership", "error");
+      return;
+    }
+
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+    // Use Unlock paywall checkout URL with referrer
+    const paywallUrl = getUnlockPaywallCheckoutUrl(
+      address as `0x${string}`,
+      `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`,
+    );
+    
+    // Also create a share page URL for better social media previews
+    const shareUrl = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
+
+    // Try to use Web Share API if available
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Join ${membership.name} Membership`,
+          text: `Check out the ${membership.name} Membership on Creative Memberships! Use my referral link to get started.`,
+          url: shareUrl,
+        });
+        showToast("Share dialog opened", "success");
+      } catch (err) {
+        // User cancelled or error occurred, fall back to clipboard
+        await navigator.clipboard.writeText(shareUrl);
+        showToast("Share link copied to clipboard!", "success");
+      }
+    } else {
+      // Fall back to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("Share link copied to clipboard!", "success");
+    }
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <Card title="Creative Memberships">
@@ -433,7 +480,7 @@ export function Home({ setActiveTab }: HomeProps) {
           <strong>Creative Memberships</strong> is your all-access pass to the
           cutting-edge Web3 and AI platforms and tools within the{" "}
           <a
-            href="https://app.creativeplatform.xyz"
+            href="https://creativeplatform.xyz"
             className="text-[var(--app-accent)] underline hover:text-[var(--app-accent-hover)]"
             target="_blank"
             rel="noopener noreferrer"
@@ -515,20 +562,35 @@ export function Home({ setActiveTab }: HomeProps) {
                 <Icon name="star" size="md" className="text-white" />
                 <div>
                   <h3 className="text-lg font-bold text-white">{m.name}</h3>
-                  <p className="text-white/80 text-sm">{m.price} USDC</p>
+                  <p className="text-white/80 text-sm">{m.price} USDC {m.billingPeriod}</p>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right flex flex-col items-end gap-2">
                 <p className="text-white/90 text-xs mb-1">{m.description}</p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="bg-white/20 hover:bg-white/30 text-white border-white/30"
-                  onClick={() => handleCardClick(m)}
-                  disabled={!address}
-                >
-                  {address ? "Purchase" : "Connect Wallet"}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+                    onClick={(e?: React.MouseEvent<HTMLButtonElement>) => {
+                      e?.stopPropagation();
+                      handleShareMembership(m);
+                    }}
+                    disabled={!address}
+                    icon={<Icon name="share" size="sm" />}
+                  >
+                    Share
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+                    onClick={() => handleCardClick(m)}
+                    disabled={!address}
+                  >
+                    {address ? "Purchase" : "Connect Wallet"}
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
@@ -594,7 +656,7 @@ export function Home({ setActiveTab }: HomeProps) {
                 onClick={() => approveUSDC(selected)}
                 disabled={checking || !email || !hasEnoughUSDC}
               >
-                {checking ? "Checking..." : `Approve ${selected.price} USDC`}
+                {checking ? "Checking..." : `Approve ${selected.price} USDC ${selected.billingPeriod}`}
               </Button>
             ) : (
               <Transaction
@@ -606,7 +668,7 @@ export function Home({ setActiveTab }: HomeProps) {
                     args: [
                       [0], // values (for ERC20, always 0)
                       [address], // recipients
-                      [ZERO_ADDRESS], // referrers
+                      [referrer], // referrers (from URL or ZERO_ADDRESS)
                       [address], // keyManagers
                       [
                         encodeAbiParameters(
@@ -638,7 +700,7 @@ export function Home({ setActiveTab }: HomeProps) {
 }
 
 type IconProps = {
-  name: "heart" | "star" | "check" | "plus" | "arrow-right";
+  name: "heart" | "star" | "check" | "plus" | "arrow-right" | "send" | "share" | "x";
   size?: "sm" | "md" | "lg";
   className?: string;
 };
@@ -728,6 +790,57 @@ export function Icon({ name, size = "md", className = "" }: IconProps) {
         <polyline points="12 5 19 12 12 19" />
       </svg>
     ),
+    send: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <title>Send</title>
+        <line x1="22" y1="2" x2="11" y2="13" />
+        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+      </svg>
+    ),
+    share: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <title>Share</title>
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+      </svg>
+    ),
+    x: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <title>Close</title>
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    ),
   };
 
   return (
@@ -737,9 +850,17 @@ export function Icon({ name, size = "md", className = "" }: IconProps) {
   );
 }
 
+// Predefined application addresses - Update these with actual addresses
+const APPLICATION_ADDRESSES: Record<string, `0x${string}` | null> = {
+  "Creative TV": null, // Update with actual Creative TV wallet address
+  "Creative Bank": null, // Update with actual Creative Bank wallet address
+};
+
 function MyMemberships() {
   const { address } = useAccount();
   const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+  const { showToast } = useToast();
   const [memberships, setMemberships] = useState<
     Array<{
       name: string;
@@ -747,9 +868,20 @@ function MyMemberships() {
       keyId?: string;
       expirationTime?: bigint;
       color: string;
+      membershipAddress?: `0x${string}`;
     }>
   >([]);
   const [loading, setLoading] = useState(false);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [selectedMembership, setSelectedMembership] = useState<{
+    name: string;
+    keyId?: string;
+    membershipAddress: `0x${string}`;
+  } | null>(null);
+  const [recipientAddress, setRecipientAddress] = useState("");
+  const [selectedApp, setSelectedApp] = useState<string>("");
+  const [checkingRecipient, setCheckingRecipient] = useState(false);
+  const [recipientHasMembership, setRecipientHasMembership] = useState<boolean | null>(null);
 
   const checkMemberships = useCallback(async () => {
     if (!address || !publicClient) return;
@@ -795,6 +927,7 @@ function MyMemberships() {
               keyId: keyId?.toString(),
               expirationTime: expirationTime as bigint | undefined,
               color: membership.color,
+              membershipAddress: membership.address,
             };
           } catch (error) {
             console.error(
@@ -805,6 +938,7 @@ function MyMemberships() {
               name: membership.name,
               hasAccess: false,
               color: membership.color,
+              membershipAddress: membership.address,
             };
           }
         }),
@@ -834,14 +968,170 @@ function MyMemberships() {
     return date.toLocaleDateString();
   };
 
+  // Function to check memberships for any wallet address
+  const checkMembershipsForAddress = useCallback(async (walletAddress: `0x${string}`) => {
+    if (!walletAddress || !publicClient) return null;
+
+    try {
+      const membershipChecks = await Promise.all(
+        MEMBERSHIPS.map(async (membership) => {
+          try {
+            const hasAccess = await publicClient.readContract({
+              address: membership.address,
+              abi: unlockAbiJson.abi as Abi,
+              functionName: "getHasValidKey",
+              args: [walletAddress],
+            });
+            return {
+              name: membership.name,
+              hasAccess: Boolean(hasAccess),
+            };
+          } catch (error) {
+            return {
+              name: membership.name,
+              hasAccess: false,
+            };
+          }
+        }),
+      );
+      return membershipChecks;
+    } catch (error) {
+      console.error("Error checking memberships for address:", error);
+      return null;
+    }
+  }, [publicClient]);
+
+  const handleSendClick = (membership: typeof activeMemberships[0]) => {
+    if (!membership.keyId || !membership.membershipAddress) return;
+    setSelectedMembership({
+      name: membership.name,
+      keyId: membership.keyId,
+      membershipAddress: membership.membershipAddress,
+    });
+    setSendModalOpen(true);
+    setRecipientAddress("");
+    setSelectedApp("");
+    setRecipientHasMembership(null);
+    setCheckingRecipient(false);
+  };
+
+  const handleAppSelect = (appName: string) => {
+    setSelectedApp(appName);
+    // If app address is configured, use it; otherwise user can enter manually
+    const appAddress = APPLICATION_ADDRESSES[appName];
+    if (appAddress) {
+      setRecipientAddress(appAddress);
+    } else {
+      setRecipientAddress("");
+    }
+    setRecipientHasMembership(null);
+    setCheckingRecipient(false);
+  };
+
+  const handleAddressChange = (value: string) => {
+    setRecipientAddress(value);
+    setSelectedApp("");
+    setRecipientHasMembership(null);
+    setCheckingRecipient(false);
+  };
+
+  const handleCheckRecipient = async () => {
+    const addressToCheck = selectedApp 
+      ? APPLICATION_ADDRESSES[selectedApp as keyof typeof APPLICATION_ADDRESSES]
+      : recipientAddress;
+
+    if (!addressToCheck || !isAddress(addressToCheck)) {
+      showToast("Please enter a valid wallet address", "error");
+      return;
+    }
+
+    if (!selectedMembership || !publicClient) return;
+
+    setCheckingRecipient(true);
+    try {
+      // Check if recipient has this specific membership
+      const hasAccess = await publicClient.readContract({
+        address: selectedMembership.membershipAddress,
+        abi: unlockAbiJson.abi as Abi,
+        functionName: "getHasValidKey",
+        args: [addressToCheck as `0x${string}`],
+      });
+      setRecipientHasMembership(Boolean(hasAccess));
+    } catch (error) {
+      console.error("Error checking recipient membership:", error);
+      setRecipientHasMembership(false);
+    } finally {
+      setCheckingRecipient(false);
+    }
+  };
+
+  const handleCloseSendModal = () => {
+    setSendModalOpen(false);
+    setSelectedMembership(null);
+    setRecipientAddress("");
+    setSelectedApp("");
+    setRecipientHasMembership(null);
+    setCheckingRecipient(false);
+  };
+
+  const getRecipientAddress = (): `0x${string}` | null => {
+    if (selectedApp) {
+      const appAddress = APPLICATION_ADDRESSES[selectedApp];
+      return appAddress || null;
+    }
+    if (recipientAddress && isAddress(recipientAddress)) {
+      return recipientAddress as `0x${string}`;
+    }
+    return null;
+  };
+
+  // Share referral code for existing membership
+  async function handleShareReferralCode(membership: typeof activeMemberships[0]) {
+    if (!address) {
+      showToast("Please connect your wallet to share your referral code", "error");
+      return;
+    }
+
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+    // Use Unlock paywall checkout URL with referrer
+    const paywallUrl = getUnlockPaywallCheckoutUrl(
+      address as `0x${string}`,
+      `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`,
+    );
+    
+    // Create share page URL for better social media previews
+    const shareUrl = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
+
+    // Try to use Web Share API if available
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Join ${membership.name} Membership`,
+          text: `Join the ${membership.name} Membership on Creative Memberships using my referral code!`,
+          url: shareUrl,
+        });
+        showToast("Share dialog opened", "success");
+      } catch (err) {
+        // User cancelled or error occurred, fall back to clipboard
+        await navigator.clipboard.writeText(shareUrl);
+        showToast("Referral link copied to clipboard!", "success");
+      }
+    } else {
+      // Fall back to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+      showToast("Referral link copied to clipboard!", "success");
+    }
+  }
+
   return (
-    <Card title="My Memberships">
-      <div className="space-y-4">
-        {!address ? (
-          <p className="text-[var(--app-foreground-muted)] text-center py-4">
-            Connect your wallet to view your memberships
-          </p>
-        ) : loading ? (
+    <>
+      <Card title="My Memberships">
+        <div className="space-y-4">
+          {!address ? (
+            <p className="text-[var(--app-foreground-muted)] text-center py-4">
+              Connect your wallet to view your memberships
+            </p>
+          ) : loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--app-accent)]"></div>
             <span className="ml-2 text-[var(--app-foreground-muted)]">
@@ -879,11 +1169,31 @@ function MyMemberships() {
                           )}
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end gap-2">
                         <p className="text-white text-xs">
                           Expires:{" "}
                           {formatExpirationDate(membership.expirationTime)}
                         </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleShareReferralCode(membership)}
+                            className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+                            icon={<Icon name="share" size="sm" />}
+                          >
+                            Share
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleSendClick(membership)}
+                            className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+                            icon={<Icon name="send" size="sm" />}
+                          >
+                            Send
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -949,6 +1259,266 @@ function MyMemberships() {
           </>
         )}
       </div>
+      </Card>
+
+      {/* Send Membership Modal */}
+      {sendModalOpen && selectedMembership && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white dark:bg-[var(--app-card-bg)] rounded-xl shadow-xl p-8 w-full max-w-md relative max-h-[90vh] overflow-y-auto">
+            <button
+              className="absolute top-2 right-2 text-2xl text-gray-400 hover:text-gray-600"
+              onClick={handleCloseSendModal}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <h2 className="text-xl font-bold mb-2">
+              Send {selectedMembership.name} Membership
+            </h2>
+            <p className="mb-4 text-[var(--app-foreground-muted)] text-sm">
+              Transfer your membership NFT to another wallet address. You can send to a specific application or enter a custom address.
+            </p>
+
+            <div className="mb-4">
+              <label className="block mb-2 text-sm font-medium text-[var(--app-foreground)]">
+                Select Application (Optional)
+              </label>
+              <div className="flex gap-2 mb-2">
+                {Object.keys(APPLICATION_ADDRESSES).map((appName) => (
+                  <Button
+                    key={appName}
+                    variant={selectedApp === appName ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => handleAppSelect(appName)}
+                    className="flex-1"
+                  >
+                    {appName}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-[var(--app-foreground-muted)] mb-2">
+                Or enter a custom wallet address:
+              </p>
+              <input
+                type="text"
+                value={recipientAddress}
+                onChange={(e) => handleAddressChange(e.target.value)}
+                placeholder={selectedApp && !APPLICATION_ADDRESSES[selectedApp] ? `Enter ${selectedApp} wallet address...` : "0x..."}
+                className="w-full px-3 py-2 border rounded-lg text-[var(--app-foreground)] bg-[var(--app-card-bg)] border-[var(--app-card-border)] focus:outline-none focus:ring-1 focus:ring-[var(--app-accent)]"
+              />
+              {selectedApp && !APPLICATION_ADDRESSES[selectedApp] && (
+                <p className="text-xs text-[var(--app-foreground-muted)] mt-1">
+                  Please enter the {selectedApp} wallet address manually
+                </p>
+              )}
+            </div>
+
+            {getRecipientAddress() && (
+              <div className="mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCheckRecipient}
+                  disabled={checkingRecipient}
+                  className="w-full mb-2"
+                >
+                  {checkingRecipient ? "Checking..." : "Check Recipient Membership"}
+                </Button>
+                {recipientHasMembership !== null && (
+                  <div className={`p-3 rounded-lg ${
+                    recipientHasMembership 
+                      ? "bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700"
+                      : "bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700"
+                  }`}>
+                    <p className={`text-sm ${
+                      recipientHasMembership 
+                        ? "text-green-800 dark:text-green-200"
+                        : "text-yellow-800 dark:text-yellow-200"
+                    }`}>
+                      {recipientHasMembership
+                        ? "✓ Recipient already has this membership"
+                        : "⚠ Recipient does not have this membership"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mb-4 p-3 bg-[var(--app-card-bg)] rounded-lg border border-[var(--app-card-border)]">
+              <p className="text-xs text-[var(--app-foreground-muted)] mb-1">
+                Membership: {selectedMembership.name}
+              </p>
+              <p className="text-xs text-[var(--app-foreground-muted)]">
+                Token ID: {selectedMembership.keyId}
+              </p>
+            </div>
+
+            {getRecipientAddress() && (
+              <Transaction
+                calls={[
+                  {
+                    address: selectedMembership.membershipAddress,
+                    abi: unlockAbiJson.abi as Abi,
+                    functionName: "safeTransferFrom",
+                    args: [
+                      address!, // from
+                      getRecipientAddress()!, // to
+                      BigInt(selectedMembership.keyId!), // tokenId
+                    ],
+                  },
+                ]}
+                onSuccess={() => {
+                  handleCloseSendModal();
+                  // Refresh memberships after successful transfer
+                  setTimeout(() => checkMemberships(), 2000);
+                }}
+              >
+                <TransactionButton 
+                  disabled={!getRecipientAddress() || !isAddress(getRecipientAddress()!)}
+                  className="w-full mb-2"
+                />
+                <TransactionStatus />
+              </Transaction>
+            )}
+
+            <Button
+              variant="outline"
+              size="md"
+              className="w-full mt-2"
+              onClick={handleCloseSendModal}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Check Memberships for Any Address */}
+      <CheckMembershipsForAddress 
+        checkMembershipsForAddress={checkMembershipsForAddress}
+      />
+    </>
+  );
+}
+
+// Component to check memberships for any wallet address
+function CheckMembershipsForAddress({
+  checkMembershipsForAddress,
+}: {
+  checkMembershipsForAddress: (address: `0x${string}`) => Promise<Array<{ name: string; hasAccess: boolean }> | null>;
+}) {
+  const [checkAddress, setCheckAddress] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [results, setResults] = useState<Array<{ name: string; hasAccess: boolean }> | null>(null);
+  const [showCheckSection, setShowCheckSection] = useState(false);
+
+  const { showToast } = useToast();
+
+  const handleCheck = async () => {
+    if (!checkAddress || !isAddress(checkAddress)) {
+      showToast("Please enter a valid wallet address", "error");
+      return;
+    }
+
+    setChecking(true);
+    try {
+      const membershipResults = await checkMembershipsForAddress(checkAddress as `0x${string}`);
+      setResults(membershipResults);
+    } catch (error) {
+      console.error("Error checking memberships:", error);
+      setResults(null);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <Card title="Check Memberships for Any Wallet">
+      <div className="space-y-4">
+        {!showCheckSection ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCheckSection(true)}
+            className="w-full"
+            icon={<Icon name="arrow-right" size="sm" />}
+          >
+            Check Another Wallet
+          </Button>
+        ) : (
+          <>
+            <div>
+              <label className="block mb-2 text-sm font-medium text-[var(--app-foreground)]">
+                Wallet Address
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={checkAddress}
+                  onChange={(e) => setCheckAddress(e.target.value)}
+                  placeholder="0x..."
+                  className="flex-1 px-3 py-2 border rounded-lg text-[var(--app-foreground)] bg-[var(--app-card-bg)] border-[var(--app-card-border)] focus:outline-none focus:ring-1 focus:ring-[var(--app-accent)]"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCheck}
+                  disabled={checking || !checkAddress}
+                >
+                  {checking ? "Checking..." : "Check"}
+                </Button>
+              </div>
+            </div>
+
+            {results && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-[var(--app-foreground)]">
+                  Membership Status:
+                </h4>
+                {results.map((membership) => (
+                  <div
+                    key={membership.name}
+                    className={`p-3 rounded-lg border ${
+                      membership.hasAccess
+                        ? "bg-green-100 dark:bg-green-900/20 border-green-300 dark:border-green-700"
+                        : "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-[var(--app-foreground)]">
+                        {membership.name}
+                      </span>
+                      {membership.hasAccess ? (
+                        <span className="text-green-600 dark:text-green-400 text-sm flex items-center">
+                          <Icon name="check" size="sm" className="mr-1" />
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-gray-500 dark:text-gray-400 text-sm">
+                          Not owned
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setShowCheckSection(false);
+                setCheckAddress("");
+                setResults(null);
+              }}
+              className="w-full"
+            >
+              Close
+            </Button>
+          </>
+        )}
+      </div>
     </Card>
   );
 }
@@ -966,6 +1536,7 @@ const MEMBERSHIPS = [
     decimals: 6,
     description: "Curated creator partnerships and collaborations for brands.",
     color: "from-[#fbbf24] to-[#f59e42]",
+    billingPeriod: "per month",
   },
   {
     name: "Investor",
@@ -974,6 +1545,7 @@ const MEMBERSHIPS = [
     decimals: 6,
     description: "Exclusive access to creative investment opportunities.",
     color: "from-[#60a5fa] to-[#2563eb]",
+    billingPeriod: "per month",
   },
   {
     name: "Creator",
@@ -982,5 +1554,6 @@ const MEMBERSHIPS = [
     decimals: 6,
     description: "Unlock creative resources, mentorship, and community.",
     color: "from-[#34d399] to-[#059669]",
+    billingPeriod: "every 3 months",
   },
 ];

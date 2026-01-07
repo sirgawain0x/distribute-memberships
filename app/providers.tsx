@@ -7,6 +7,7 @@ import { MiniKitProvider } from "@coinbase/onchainkit/minikit";
 import { type State, WagmiProvider } from "wagmi";
 import { getConfig } from "@/wagmi";
 import { OnchainKitProvider } from "@coinbase/onchainkit";
+import { ToastProvider } from "./components/Toast";
 
 export function Providers(props: {
   children: ReactNode;
@@ -18,6 +19,23 @@ export function Providers(props: {
 
   useEffect(() => {
     setIsClient(true);
+
+    // Validate required environment variables
+    const requiredEnvVars = [
+      "NEXT_PUBLIC_ONCHAINKIT_PROJECT_ID",
+      "NEXT_PUBLIC_ONCHAINKIT_API_KEY",
+    ];
+
+    const missing = requiredEnvVars.filter((key) => !process.env[key]);
+
+    if (missing.length > 0) {
+      const message = `Missing required environment variables: ${missing.join(", ")}`;
+      if (process.env.NODE_ENV === "production") {
+        console.error(message);
+      } else {
+        console.warn(message);
+      }
+    }
   }, []);
 
   // Don't render until we're on the client side to avoid hydration issues
@@ -46,7 +64,9 @@ export function Providers(props: {
             chain={base}
             projectId={process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_ID}
           >
-            {props.children}
+            <ToastProvider>
+              {props.children}
+            </ToastProvider>
           </OnchainKitProvider>
         </MiniKitProvider>
       </QueryClientProvider>
