@@ -18,16 +18,21 @@ export async function initializeFarcasterFrame(options?: {
 
     // Call ready to dismiss the splash screen and enable wallet provider
     await sdk.actions.ready(options);
-    console.log("Farcaster frame is ready");
 
     // Additional check to ensure wallet provider is available
-    if (typeof window !== "undefined" && window.ethereum) {
+    if (
+      process.env.NODE_ENV === "development" &&
+      typeof window !== "undefined" &&
+      window.ethereum
+    ) {
       console.log("Wallet provider is available");
     }
 
     return true;
   } catch (error) {
-    console.error("Error initializing Farcaster frame:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error initializing Farcaster frame:", error);
+    }
     return false;
   }
 }

@@ -18,7 +18,7 @@ import {
   WalletDropdown,
   WalletDropdownDisconnect,
 } from "@coinbase/onchainkit/wallet";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, Suspense } from "react";
 import { Button } from "./components/DemoComponents";
 import { Icon } from "./components/DemoComponents";
 import { Home } from "./components/DemoComponents";
@@ -92,7 +92,19 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <Wallet className="z-10">
                 <ConnectWallet>
-                  <Name className="text-inherit" />
+                  {context?.user?.pfpUrl ? (
+                    <img
+                      src={context.user.pfpUrl}
+                      alt={
+                        context.user.displayName ||
+                        context.user.username ||
+                        "User"
+                      }
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <Name className="text-inherit" />
+                  )}
                 </ConnectWallet>
                 <WalletDropdown>
                   <Identity className="px-4 pt-3 pb-2" hasCopyAddressOnClick>
@@ -110,7 +122,11 @@ export default function App() {
         </header>
 
         <main className="flex-1">
-          {activeTab === "home" && <Home setActiveTab={setActiveTab} />}
+          {activeTab === "home" && (
+            <Suspense fallback={<div className="p-4">Loading...</div>}>
+              <Home setActiveTab={setActiveTab} />
+            </Suspense>
+          )}
           {activeTab === "features" && <Features setActiveTab={setActiveTab} />}
           {activeTab === "fund" && <Fund setActiveTab={setActiveTab} />}
         </main>
