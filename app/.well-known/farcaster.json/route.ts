@@ -33,13 +33,14 @@ export async function GET() {
       webhookUrl: `${URL}/api/webhook`,
       buttonTitle: "Start Your Journey",
       primaryCategory: process.env.NEXT_PUBLIC_APP_PRIMARY_CATEGORY,
-      tags: ["memberships", "nft", "CreatorEconomy"],
+      tags: ["memberships", "nft", "creatorEconomy"],
       heroImageUrl: process.env.NEXT_PUBLIC_APP_HERO_IMAGE,
       tagline: process.env.NEXT_PUBLIC_APP_TAGLINE,
       ogTitle: process.env.NEXT_PUBLIC_APP_OG_TITLE,
       ogDescription: process.env.NEXT_PUBLIC_APP_OG_DESCRIPTION,
       ogImageUrl: process.env.NEXT_PUBLIC_APP_OG_IMAGE,
       castShareUrl: `${URL}/share`,
+      noIndex: 'false'
     }),
   });
 }
