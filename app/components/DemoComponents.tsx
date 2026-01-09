@@ -13,6 +13,7 @@ import unlockAbiJson from "../../lib/abis/Unlock.json";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "./Toast";
+import { generateCheckoutUrlWithReferrer } from "../utils/unlockPaywall";
 
 type ButtonProps = {
   children: ReactNode;
@@ -1085,28 +1086,28 @@ function MyMemberships() {
       return;
     }
 
+    // Generate Unlock checkout URL with referrer address
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    
-    // Create share page URL for better social media previews
-    const shareUrl = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
+    const redirectUri = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
+    const checkoutUrl = generateCheckoutUrlWithReferrer(address, redirectUri);
 
     // Try to use Web Share API if available
     if (navigator.share) {
       try {
         await navigator.share({
           title: `Join ${membership.name} Membership`,
-          text: `Join the ${membership.name} Membership on Creative Memberships using my referral code!`,
-          url: shareUrl,
+          text: `Join the ${membership.name} Membership on Creative Memberships using my referral link!`,
+          url: checkoutUrl,
         });
         showToast("Share dialog opened", "success");
       } catch {
         // User cancelled or error occurred, fall back to clipboard
-        await navigator.clipboard.writeText(shareUrl);
+        await navigator.clipboard.writeText(checkoutUrl);
         showToast("Referral link copied to clipboard!", "success");
       }
     } else {
       // Fall back to clipboard
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(checkoutUrl);
       showToast("Referral link copied to clipboard!", "success");
     }
   }
