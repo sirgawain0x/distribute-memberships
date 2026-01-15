@@ -996,7 +996,17 @@ function MyMemberships() {
   }, [publicClient]);
 
   const handleSendClick = (membership: typeof activeMemberships[0]) => {
-    if (!membership.keyId || !membership.membershipAddress) return;
+    // Validate required properties
+    if (!membership.keyId) {
+      showToast("Membership key ID is missing. Please refresh your memberships.", "error");
+      return;
+    }
+    if (!membership.membershipAddress) {
+      showToast("Membership address is missing. Please refresh your memberships.", "error");
+      return;
+    }
+    
+    // Set selected membership and open modal
     setSelectedMembership({
       name: membership.name,
       keyId: membership.keyId,
@@ -1176,7 +1186,10 @@ function MyMemberships() {
                           <Button
                             variant="secondary"
                             size="sm"
-                            onClick={() => handleSendClick(membership)}
+                            onClick={(e?: React.MouseEvent<HTMLButtonElement>) => {
+                              e?.stopPropagation();
+                              handleSendClick(membership);
+                            }}
                             className="bg-white/20 hover:bg-white/30 text-white border-white/30"
                             icon={<Icon name="send" size="sm" />}
                           >
@@ -1270,34 +1283,47 @@ function MyMemberships() {
 
             <div className="mb-4">
               <label className="block mb-2 text-sm font-medium text-[var(--app-foreground)]">
-                Select Application (Optional)
+                Recipient Wallet Address <span className="text-red-500">*</span>
               </label>
-              <div className="flex gap-2 mb-2">
-                {Object.keys(APPLICATION_ADDRESSES).map((appName) => (
-                  <Button
-                    key={appName}
-                    variant={selectedApp === appName ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => handleAppSelect(appName)}
-                    className="flex-1"
-                  >
-                    {appName}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-[var(--app-foreground-muted)] mb-2">
-                Or enter a custom wallet address:
-              </p>
+              
+              {/* Application Selection (Optional) */}
+              {Object.keys(APPLICATION_ADDRESSES).length > 0 && (
+                <>
+                  <p className="text-xs text-[var(--app-foreground-muted)] mb-2">
+                    Quick select (optional):
+                  </p>
+                  <div className="flex gap-2 mb-3">
+                    {Object.keys(APPLICATION_ADDRESSES).map((appName) => (
+                      <Button
+                        key={appName}
+                        variant={selectedApp === appName ? "primary" : "outline"}
+                        size="sm"
+                        onClick={() => handleAppSelect(appName)}
+                        className="flex-1"
+                      >
+                        {appName}
+                      </Button>
+                    ))}
+                  </div>
+                </>
+              )}
+              
+              {/* Wallet Address Input */}
               <input
                 type="text"
                 value={recipientAddress}
                 onChange={(e) => handleAddressChange(e.target.value)}
-                placeholder={selectedApp && !APPLICATION_ADDRESSES[selectedApp] ? `Enter ${selectedApp} wallet address...` : "0x..."}
-                className="w-full px-3 py-2 border rounded-lg text-[var(--app-foreground)] bg-[var(--app-card-bg)] border-[var(--app-card-border)] focus:outline-none focus:ring-1 focus:ring-[var(--app-accent)]"
+                placeholder={selectedApp && !APPLICATION_ADDRESSES[selectedApp] ? `Enter ${selectedApp} wallet address...` : "Enter recipient wallet address (0x...)"}
+                className="w-full px-3 py-2 border rounded-lg text-[var(--app-foreground)] bg-[var(--app-card-bg)] border-[var(--app-card-border)] focus:outline-none focus:ring-2 focus:ring-[var(--app-accent)] mb-2"
               />
               {selectedApp && !APPLICATION_ADDRESSES[selectedApp] && (
-                <p className="text-xs text-[var(--app-foreground-muted)] mt-1">
+                <p className="text-xs text-[var(--app-foreground-muted)] mt-1 mb-2">
                   Please enter the {selectedApp} wallet address manually
+                </p>
+              )}
+              {!getRecipientAddress() && (
+                <p className="text-xs text-[var(--app-foreground-muted)]">
+                  Enter a valid wallet address to enable the send button
                 </p>
               )}
             </div>
