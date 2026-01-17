@@ -897,19 +897,23 @@ function MyMemberships() {
             if (hasAccess) {
               try {
                 // Get key details if user has access
+                // Use tokenOfOwnerByIndex to get the token ID (index 0 for first key)
                 keyId = await publicClient.readContract({
                   address: membership.address,
                   abi: unlockAbiJson.abi as Abi,
-                  functionName: "getTokenIdFor",
-                  args: [address],
+                  functionName: "tokenOfOwnerByIndex",
+                  args: [address, 0n],
                 });
 
-                expirationTime = (await publicClient.readContract({
-                  address: membership.address,
-                  abi: unlockAbiJson.abi as Abi,
-                  functionName: "keyExpirationTimestampFor",
-                  args: [address],
-                })) as bigint;
+                // Get expiration time using the token ID
+                if (keyId) {
+                  expirationTime = (await publicClient.readContract({
+                    address: membership.address,
+                    abi: unlockAbiJson.abi as Abi,
+                    functionName: "keyExpirationTimestampFor",
+                    args: [keyId],
+                  })) as bigint;
+                }
               } catch (error) {
                 console.log("Could not fetch key details:", error);
               }
