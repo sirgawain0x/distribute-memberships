@@ -962,7 +962,22 @@ function MyMemberships() {
 
   const formatExpirationDate = (timestamp?: bigint) => {
     if (!timestamp) return "Unknown";
+    
+    // Check if the key never expires (type(uint256).max = 2^256 - 1)
+    // This is approximately 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    // We check if it's greater than a reasonable future date (year 2100)
+    const maxReasonableTimestamp = BigInt(4102444800); // Jan 1, 2100
+    if (timestamp > maxReasonableTimestamp) {
+      return "Never";
+    }
+    
     const date = new Date(Number(timestamp) * 1000);
+    
+    // Check if the date is valid
+    if (isNaN(date.getTime())) {
+      return "Never";
+    }
+    
     return date.toLocaleDateString();
   };
 
