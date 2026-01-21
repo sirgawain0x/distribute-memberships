@@ -8,7 +8,9 @@ import {
   Transaction,
   TransactionButton,
   TransactionStatus,
+  TransactionSponsor,
 } from "@coinbase/onchainkit/transaction";
+import type { TransactionError, LifecycleStatus } from "@coinbase/onchainkit/transaction";
 import unlockAbiJson from "../../lib/abis/Unlock.json";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -675,8 +677,22 @@ export function Home({ setActiveTab }: HomeProps) {
                   },
                 ]}
                 isSponsored={true}
+                onError={(error: TransactionError) => {
+                  console.error("Transaction error:", error);
+                  showToast(
+                    `Transaction failed: ${error.message || error.error || "Unknown error"}`,
+                    "error"
+                  );
+                }}
+                onStatus={(status: LifecycleStatus) => {
+                  console.log("Transaction status:", status);
+                  if (status.statusName === "error") {
+                    console.error("Transaction error status:", status.statusData);
+                  }
+                }}
               >
                 <TransactionButton disabled={!hasEnoughUSDC} />
+                <TransactionSponsor />
                 <TransactionStatus />
               </Transaction>
             )}
@@ -1403,6 +1419,19 @@ function MyMemberships() {
                   },
                 ]}
                 isSponsored={true}
+                onError={(error: TransactionError) => {
+                  console.error("Transaction error:", error);
+                  showToast(
+                    `Transaction failed: ${error.message || error.error || "Unknown error"}`,
+                    "error"
+                  );
+                }}
+                onStatus={(status: LifecycleStatus) => {
+                  console.log("Transaction status:", status);
+                  if (status.statusName === "error") {
+                    console.error("Transaction error status:", status.statusData);
+                  }
+                }}
                 onSuccess={() => {
                   handleCloseSendModal();
                   // Refresh memberships after successful transfer
@@ -1413,6 +1442,7 @@ function MyMemberships() {
                   disabled={!getRecipientAddress() || !isAddress(getRecipientAddress()!)}
                   className="w-full mb-2"
                 />
+                <TransactionSponsor />
                 <TransactionStatus />
               </Transaction>
             )}

@@ -36,6 +36,14 @@ export function Providers(props: {
         console.warn(message);
       }
     }
+
+    // Warn if paymaster is not configured (sponsored transactions won't work)
+    if (!process.env.NEXT_PUBLIC_PAYMASTER_ENDPOINT) {
+      console.warn(
+        "⚠️ NEXT_PUBLIC_PAYMASTER_ENDPOINT is not set. Sponsored transactions will not work. " +
+        "Get your paymaster endpoint from https://portal.cdp.coinbase.com/products/bundler-and-paymaster"
+      );
+    }
   }, []);
 
   // Don't render until we're on the client side to avoid hydration issues
