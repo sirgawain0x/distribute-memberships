@@ -679,14 +679,23 @@ export function Home({ setActiveTab }: HomeProps) {
                 isSponsored={true}
                 onError={(error: TransactionError) => {
                   console.error("Transaction error:", error);
-                  showToast(
-                    `Transaction failed: ${error.message || error.error || "Unknown error"}`,
-                    "error"
-                  );
+                  // "Request Denied" is a user rejection, don't treat as error
+                  if (error.message?.includes("Request Denied") || error.error?.includes("Request Denied")) {
+                    console.log("User rejected transaction");
+                    return;
+                  }
+                  // Don't show toast here - TransactionStatus will handle it
+                  // Only log for debugging
                 }}
                 onStatus={(status: LifecycleStatus) => {
                   console.log("Transaction status:", status);
                   if (status.statusName === "error") {
+                    const errorData = status.statusData as TransactionError;
+                    // Filter out user rejections
+                    if (errorData?.message?.includes("Request Denied") || errorData?.error?.includes("Request Denied")) {
+                      console.log("User rejected transaction");
+                      return;
+                    }
                     console.error("Transaction error status:", status.statusData);
                   }
                 }}
@@ -1421,14 +1430,23 @@ function MyMemberships() {
                 isSponsored={true}
                 onError={(error: TransactionError) => {
                   console.error("Transaction error:", error);
-                  showToast(
-                    `Transaction failed: ${error.message || error.error || "Unknown error"}`,
-                    "error"
-                  );
+                  // "Request Denied" is a user rejection, don't treat as error
+                  if (error.message?.includes("Request Denied") || error.error?.includes("Request Denied")) {
+                    console.log("User rejected transaction");
+                    return;
+                  }
+                  // Don't show toast here - TransactionStatus will handle it
+                  // Only log for debugging
                 }}
                 onStatus={(status: LifecycleStatus) => {
                   console.log("Transaction status:", status);
                   if (status.statusName === "error") {
+                    const errorData = status.statusData as TransactionError;
+                    // Filter out user rejections
+                    if (errorData?.message?.includes("Request Denied") || errorData?.error?.includes("Request Denied")) {
+                      console.log("User rejected transaction");
+                      return;
+                    }
                     console.error("Transaction error status:", status.statusData);
                   }
                 }}
