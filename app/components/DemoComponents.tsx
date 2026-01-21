@@ -678,25 +678,38 @@ export function Home({ setActiveTab }: HomeProps) {
                 ]}
                 isSponsored={true}
                 onError={(error: TransactionError) => {
-                  console.error("Transaction error:", error);
-                  // "Request Denied" is a user rejection, don't treat as error
-                  if (error.message?.includes("Request Denied") || error.error?.includes("Request Denied")) {
-                    console.log("User rejected transaction");
+                  console.error("Transaction error details:", {
+                    code: error.code,
+                    error: error.error,
+                    message: error.message,
+                    fullError: error,
+                  });
+                  
+                  // Check for paymaster-related errors
+                  const errorMsg = (error.message || error.error || "").toLowerCase();
+                  if (errorMsg.includes("request denied") || errorMsg.includes("denied")) {
+                    console.warn("⚠️ Transaction denied. Possible causes:");
+                    console.warn("1. Contracts not allowlisted in paymaster");
+                    console.warn("2. Paymaster limits exceeded");
+                    console.warn("3. User rejected transaction");
+                    console.warn("Contract address:", selected.address);
+                    console.warn("Function: purchase");
                     return;
                   }
-                  // Don't show toast here - TransactionStatus will handle it
-                  // Only log for debugging
+                  
+                  if (errorMsg.includes("insufficient funds") || errorMsg.includes("enough funds")) {
+                    console.warn("⚠️ Funds error. This might mean:");
+                    console.warn("1. Paymaster sponsorship failed (contracts not allowlisted)");
+                    console.warn("2. Transaction fell back to user-paid gas");
+                    console.warn("3. User doesn't have enough ETH for gas");
+                    console.warn("Check paymaster allowlist at: https://portal.cdp.coinbase.com/products/paymaster/configuration");
+                  }
                 }}
                 onStatus={(status: LifecycleStatus) => {
-                  console.log("Transaction status:", status);
+                  console.log("Transaction status:", status.statusName, status.statusData);
                   if (status.statusName === "error") {
                     const errorData = status.statusData as TransactionError;
-                    // Filter out user rejections
-                    if (errorData?.message?.includes("Request Denied") || errorData?.error?.includes("Request Denied")) {
-                      console.log("User rejected transaction");
-                      return;
-                    }
-                    console.error("Transaction error status:", status.statusData);
+                    console.error("Transaction error status:", errorData);
                   }
                 }}
               >
@@ -1429,25 +1442,38 @@ function MyMemberships() {
                 ]}
                 isSponsored={true}
                 onError={(error: TransactionError) => {
-                  console.error("Transaction error:", error);
-                  // "Request Denied" is a user rejection, don't treat as error
-                  if (error.message?.includes("Request Denied") || error.error?.includes("Request Denied")) {
-                    console.log("User rejected transaction");
+                  console.error("Transaction error details:", {
+                    code: error.code,
+                    error: error.error,
+                    message: error.message,
+                    fullError: error,
+                  });
+                  
+                  // Check for paymaster-related errors
+                  const errorMsg = (error.message || error.error || "").toLowerCase();
+                  if (errorMsg.includes("request denied") || errorMsg.includes("denied")) {
+                    console.warn("⚠️ Transaction denied. Possible causes:");
+                    console.warn("1. Contracts not allowlisted in paymaster");
+                    console.warn("2. Paymaster limits exceeded");
+                    console.warn("3. User rejected transaction");
+                    console.warn("Contract address:", selectedMembership.membershipAddress);
+                    console.warn("Function: safeTransferFrom");
                     return;
                   }
-                  // Don't show toast here - TransactionStatus will handle it
-                  // Only log for debugging
+                  
+                  if (errorMsg.includes("insufficient funds") || errorMsg.includes("enough funds")) {
+                    console.warn("⚠️ Funds error. This might mean:");
+                    console.warn("1. Paymaster sponsorship failed (contracts not allowlisted)");
+                    console.warn("2. Transaction fell back to user-paid gas");
+                    console.warn("3. User doesn't have enough ETH for gas");
+                    console.warn("Check paymaster allowlist at: https://portal.cdp.coinbase.com/products/paymaster/configuration");
+                  }
                 }}
                 onStatus={(status: LifecycleStatus) => {
-                  console.log("Transaction status:", status);
+                  console.log("Transaction status:", status.statusName, status.statusData);
                   if (status.statusName === "error") {
                     const errorData = status.statusData as TransactionError;
-                    // Filter out user rejections
-                    if (errorData?.message?.includes("Request Denied") || errorData?.error?.includes("Request Denied")) {
-                      console.log("User rejected transaction");
-                      return;
-                    }
-                    console.error("Transaction error status:", status.statusData);
+                    console.error("Transaction error status:", errorData);
                   }
                 }}
                 onSuccess={() => {
