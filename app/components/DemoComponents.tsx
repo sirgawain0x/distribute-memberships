@@ -674,6 +674,7 @@ export function Home({ setActiveTab }: HomeProps) {
                     ],
                   },
                 ]}
+                isSponsored={true}
               >
                 <TransactionButton disabled={!hasEnoughUSDC} />
                 <TransactionStatus />
@@ -1401,6 +1402,7 @@ function MyMemberships() {
                     ],
                   },
                 ]}
+                isSponsored={true}
                 onSuccess={() => {
                   handleCloseSendModal();
                   // Refresh memberships after successful transfer

@@ -63,6 +63,11 @@ export function Providers(props: {
             apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY as string}
             chain={base}
             projectId={process.env.NEXT_PUBLIC_ONCHAINKIT_PROJECT_ID}
+            config={{
+              ...(process.env.NEXT_PUBLIC_PAYMASTER_ENDPOINT && {
+                paymaster: process.env.NEXT_PUBLIC_PAYMASTER_ENDPOINT,
+              }),
+            }}
           >
             <ToastProvider>
               {props.children}
