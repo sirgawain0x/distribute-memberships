@@ -1,5 +1,6 @@
 import "./globals.css";
 import "./theme.css";
+import "@account-kit/react/styles.css";
 
 import type { Metadata, Viewport } from "next";
 import { Providers } from "./providers";
