@@ -4,7 +4,8 @@ import { sdk } from "@farcaster/frame-sdk";
 import {
   useAuthModal,
   useUser,
-  useLogout
+  useLogout,
+  useAccount,
 } from "@account-kit/react";
 import { useEffect, useMemo, useState, useCallback, Suspense } from "react";
 import { Button } from "./components/DemoComponents";
@@ -23,6 +24,26 @@ export default function App() {
   const { openAuthModal } = useAuthModal();
   const user = useUser();
   const { logout } = useLogout();
+  const { address } = useAccount({ type: "LightAccount" });
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const closeDropdown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.profile-dropdown-container')) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', closeDropdown);
+    return () => document.removeEventListener('click', closeDropdown);
+  }, []);
+
+  const copyAddress = useCallback(async () => {
+    if (address) {
+      await navigator.clipboard.writeText(address);
+    }
+  }, [address]);
 
   useEffect(() => {
     async function initializeFrame() {
@@ -80,20 +101,54 @@ export default function App() {
           <div>
             <div className="flex items-center space-x-2">
               {user ? (
-                <div className="flex items-center space-x-2 p-1 bg-white/5 rounded-full pr-3 border border-white/10">
-                  {/* Avatar or Placeholder */}
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center overflow-hidden">
-                    {/* We could use alchemy user data here if available */}
-                    <span className="text-xs text-white font-bold">You</span>
+                <div className="relative profile-dropdown-container">
+                  <div
+                    className="flex items-center space-x-2 p-1 bg-black/60 backdrop-blur-md rounded-full pr-3 border border-white/10 cursor-pointer hover:bg-black/80 transition-colors"
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  >
+                    {/* Avatar or Placeholder */}
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center overflow-hidden">
+                      {/* We could use alchemy user data here if available */}
+                      <span className="text-xs text-white font-bold">You</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium text-white/90 max-w-[100px] truncate">
+                        {user.email || "User"}
+                      </span>
+                    </div>
+                    <Icon name={isDropdownOpen ? "x" : "arrow-right"} size="sm" className="text-white/50 w-3 h-3 rotate-90" />
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-white/90 max-w-[100px] truncate">
-                      {user.email || "User"}
-                    </span>
-                    <span className="text-[10px] text-white/50 cursor-pointer hover:text-white/80" onClick={() => logout()}>
-                      Sign out
-                    </span>
-                  </div>
+
+                  {isDropdownOpen && (
+                    <div className="absolute top-full mt-2 left-0 w-64 bg-black/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-xl overflow-hidden z-50 p-2">
+                      <div className="px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-white/50 font-bold mb-1">Account</p>
+                        <div className="flex items-center justify-between bg-white/5 rounded-lg p-2 border border-white/5">
+                          <span className="text-xs text-white/90 font-mono truncate mr-2">
+                            {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "No Address"}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyAddress();
+                            }}
+                            className="text-white/50 hover:text-white transition-colors"
+                          >
+                            <Icon name="check" size="sm" className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="h-px bg-white/10 my-1 mx-2" />
+
+                      <button
+                        className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded-lg transition-colors flex items-center space-x-2"
+                        onClick={() => logout()}
+                      >
+                        <span>Sign out</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <Button
@@ -130,7 +185,7 @@ export default function App() {
             reserved.
           </Button>
         </footer>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
