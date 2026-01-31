@@ -12,6 +12,7 @@
     "@account-kit/core": "^4.83.2",
     "@account-kit/infra": "^4.83.2",
     "@account-kit/react": "^4.83.2",
+    "@coinbase/coinbase-sdk": "^0.25.0",
     "@farcaster/frame-sdk": "^0.0.35",
     "@tanstack/react-query": "^5",
     "@unlock-protocol/paywall": "^0.8.1",
