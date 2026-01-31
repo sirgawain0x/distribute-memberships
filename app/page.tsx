@@ -13,9 +13,15 @@ import { Icon } from "./components/DemoComponents";
 import { Home } from "./components/DemoComponents";
 import { Features } from "./components/DemoComponents";
 import { Fund } from "./components/Funds";
-import { handleSplashScreen } from "./utils/farcaster";
+import { handleSplashScreen, isFarcasterContext } from "./utils/farcaster";
 
 export default function App() {
+  const [isFarcaster, setIsFarcaster] = useState(false);
+
+  useEffect(() => {
+    setIsFarcaster(isFarcasterContext());
+  }, []);
+
   const [frameAdded, setFrameAdded] = useState(false);
   const [activeTab, setActiveTab] = useState("home");
   const [frameInitialized, setFrameInitialized] = useState(false);
@@ -71,6 +77,10 @@ export default function App() {
   }, []);
 
   const saveFrameButton = useMemo(() => {
+    if (!isFarcaster) {
+      return null;
+    }
+
     // Check if added to client (this is approximate without full context check)
     if (!frameAdded) {
       return (
@@ -92,7 +102,7 @@ export default function App() {
         <span>Saved</span>
       </div>
     );
-  }, [frameAdded, handleAddFrame]);
+  }, [frameAdded, handleAddFrame, isFarcaster]);
 
   return (
     <div className="flex flex-col min-h-screen font-sans text-[var(--app-foreground)] mini-app-theme from-[var(--app-background)] to-[var(--app-gray)]">

@@ -10,6 +10,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "./Toast";
 import { generateCheckoutUrlWithReferrer } from "../utils/unlockPaywall";
+import { invokeHaptic, shareFrame, isFarcasterContext } from "../utils/farcaster";
 
 type ButtonProps = {
   children: ReactNode;
@@ -56,7 +57,10 @@ export function Button({
     <button
       type={type}
       className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
-      onClick={onClick}
+      onClick={(e) => {
+        invokeHaptic("light");
+        onClick?.(e);
+      }}
       disabled={disabled}
     >
       {icon && <span className="flex items-center mr-2">{icon}</span>}
@@ -83,7 +87,10 @@ export function Card({ title, children, className = "", onClick }: CardProps) {
   return (
     <div
       className={`bg-[var(--app-card-bg)] backdrop-blur-md rounded-xl shadow-lg border border-[var(--app-card-border)] overflow-hidden transition-all hover:shadow-xl ${className} ${onClick ? "cursor-pointer" : ""}`}
-      onClick={onClick}
+      onClick={onClick ? () => {
+        invokeHaptic("light");
+        onClick();
+      } : undefined}
       onKeyDown={onClick ? handleKeyDown : undefined}
       tabIndex={onClick ? 0 : undefined}
       role={onClick ? "button" : undefined}
@@ -411,6 +418,14 @@ export function Home({ setActiveTab }: HomeProps) {
 
     // Also create a share page URL for better social media previews
     const shareUrl = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
+
+    if (isFarcasterContext()) {
+      const success = await shareFrame({
+        text: `Check out the ${membership.name} Membership on Creative Memberships!`,
+        url: shareUrl,
+      });
+      if (success) return;
+    }
 
     // Try to use Web Share API if available
     if (navigator.share) {

@@ -74,3 +74,48 @@ export function isFarcasterContext(): boolean {
     return false;
   }
 }
+
+/**
+ * Triggers a haptic feedback if available
+ */
+export function invokeHaptic(type: "light" | "medium" | "heavy" | "rigid" | "soft" = "medium") {
+  try {
+    if (sdk.haptics) {
+      sdk.haptics.impactOccurred(type);
+    }
+  } catch {
+    // Ignore errors for haptics
+  }
+}
+
+/**
+ * Opens the Farcaster cast composer with the frame URL
+ */
+export async function shareFrame(options?: {
+  text?: string;
+  url?: string;
+}) {
+  try {
+    const { text, url } = options || {};
+
+    // Default to current URL if not provided
+    const shareUrl = url || (typeof window !== "undefined" ? window.location.href : "");
+
+    // Use Farcaster SDK to compose a cast
+    if (sdk.actions?.composeCast) {
+      await sdk.actions.composeCast({
+        text,
+        embeds: shareUrl ? [shareUrl] : [],
+      });
+      return true;
+    }
+
+    // Fallback if not in Farcaster context but still wanted to share (though this function is for Farcaster)
+    // Could return false to let caller handle fallback
+    return false;
+
+  } catch (error) {
+    console.error("Error sharing frame:", error);
+    return false;
+  }
+}
