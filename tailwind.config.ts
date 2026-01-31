@@ -1,6 +1,7 @@
+import { withAccountKitUi } from "@account-kit/react/tailwind";
 import type { Config } from "tailwindcss";
 
-const config: Config = {
+const config: Config = withAccountKitUi({
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -24,5 +25,12 @@ const config: Config = {
     },
   },
   plugins: [],
-};
+}, {
+  // AccountKit UI theme customizations
+  // colors: {
+  //     "btn-primary": "...",
+  //     "fg-accent-brand": "...",
+  // }
+});
+
 export default config;
