@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "@account-kit/react";
 import { Button, Card } from "./DemoComponents";
-
 import { getOnrampBuyUrl } from "../utils/coinbaseOnramp";
+
 // NOTE: To integrate Divvi referral, import getDataSuffix, submitReferral from '@divvi/referral-sdk' and useChainId from 'wagmi' when adding a custom transaction. See integration plan for details.
 
 type FundProps = {
@@ -23,11 +23,8 @@ interface SessionTokenResponse {
 }
 
 export function Fund({ setActiveTab }: FundProps) {
-  const [sessionData, setSessionData] = useState<SessionTokenResponse | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [sessionData, setSessionData] = useState<SessionTokenResponse | null>(null);
+  const [loading, setLoading] = useState(false);
   const [selectedAmount, setSelectedAmount] = useState(30);
   const [selectedAsset, setSelectedAsset] = useState("USDC");
   const { address } = useAccount({ type: "LightAccount" });
@@ -40,7 +37,6 @@ export function Fund({ setActiveTab }: FundProps) {
       if (!address) return;
 
       setLoading(true);
-      setError(null);
 
       try {
         const res = await fetch("/api/onramp-session", {
@@ -58,16 +54,17 @@ export function Fund({ setActiveTab }: FundProps) {
 
         if (!res.ok) {
           const errorData = await res.json();
-          throw new Error(errorData.error || "Failed to fetch session token");
+          // Log but don't hard fail - we'll fallback to direct URL
+          console.warn("Session token fetch failed:", errorData);
+          setSessionData(null);
+        } else {
+          const data: SessionTokenResponse = await res.json();
+          setSessionData(data);
         }
-
-        const data: SessionTokenResponse = await res.json();
-        setSessionData(data);
       } catch (err) {
         console.error("Failed to fetch session token:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch session token",
-        );
+        // Fallback to null sessionData
+        setSessionData(null);
       } finally {
         setLoading(false);
       }
@@ -76,14 +73,29 @@ export function Fund({ setActiveTab }: FundProps) {
     fetchSessionToken();
   }, [address, selectedAmount, selectedAsset]);
 
-  // Generate the enhanced Coinbase Onramp URL
-  const onrampBuyUrl =
-    address && sessionData?.sessionToken
-      ? `https://pay.coinbase.com/buy/select-asset?sessionToken=${sessionData.sessionToken}&defaultNetwork=base&defaultAsset=${selectedAsset}&presetFiatAmount=${selectedAmount}&fiatCurrency=USD`
-      : null;
+  // Listen for Onramp completion events
+  const [isComplete, setIsComplete] = useState(false);
 
-  // Alternative URL using the utility (fallback)
-  const fallbackUrl = address
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Security check: ensure message is from Coinbase
+      if (event.origin !== "https://pay.coinbase.com") return;
+
+      // Check for success event
+      // Based on Coinbase Onramp docs/patterns
+      if (event.data === "success" || event.data?.eventName === "success" || event.data?.type === "success") {
+        console.log("Onramp purchase successful:", event.data);
+        setIsComplete(true);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  // Generate the Coinbase Onramp URL
+  // Uses session token if available (secure), otherwise falls back to Project ID (public)
+  const onrampBuyUrl = address
     ? getOnrampBuyUrl({
       address,
       defaultAsset: selectedAsset,
@@ -93,6 +105,53 @@ export function Fund({ setActiveTab }: FundProps) {
       sessionToken: sessionData?.sessionToken,
     })
     : null;
+
+  if (isComplete) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <Card title="Payment Successful">
+          <div className="text-center py-6">
+            <div className="text-green-500 mb-4 flex justify-center">
+              <svg
+                className="w-16 h-16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold mb-2">Funds Added!</h3>
+            <p className="text-[var(--app-foreground-muted)] mb-6">
+              Your transaction has been processed successfully.
+            </p>
+            <Button
+              className="w-full"
+              variant="primary"
+              onClick={() => {
+                setIsComplete(false);
+                setActiveTab("home");
+              }}
+            >
+              Back to Home
+            </Button>
+            <Button
+              className="w-full mt-3"
+              variant="outline"
+              onClick={() => setIsComplete(false)}
+            >
+              Add More Funds
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -133,40 +192,38 @@ export function Fund({ setActiveTab }: FundProps) {
           </div>
         </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Loading State */}
+        {/* Loading State - optional, non-blocking for fallback */}
         {loading && (
-          <div className="py-8 text-center text-[var(--app-foreground-muted)]">
-            Loading funding options...
+          <div className="py-2 text-center text-xs text-[var(--app-foreground-muted)]">
+            Loading secure session...
           </div>
         )}
 
         {/* Fund Button */}
-        {!loading && sessionData && (
-          <div className="space-y-4">
-            <Button
-              className="w-full"
-              onClick={() => window.open(onrampBuyUrl ?? fallbackUrl ?? "", "_blank")}
-              disabled={!address}
-            >
-              Add Funds
-            </Button>
-          </div>
-        )}
+        <div className="space-y-4">
+          <Button
+            className="w-full"
+            onClick={() => {
+              if (onrampBuyUrl) {
+                // Open in new window/popup with specific dimensions to match recipe feel
+                window.open(
+                  onrampBuyUrl,
+                  "coinbase-onramp",
+                  "width=500,height=700,scrollbars=yes,resizable=yes,status=yes,location=yes,toolbar=no,menubar=no"
+                );
+              }
+            }}
+            disabled={!address}
+          >
+            {address ? "Add Funds" : "Connect Wallet to Add Funds"}
+          </Button>
+        </div>
 
         {/* Configuration Info */}
         {sessionData && (
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-700">
-              <strong>Configuration:</strong>{" "}
-              {sessionData.config.assets.join(", ")} on{" "}
-              {sessionData.config.blockchains.join(", ")}
+              <strong>Secure Session Active</strong>
             </p>
           </div>
         )}
@@ -182,3 +239,4 @@ export function Fund({ setActiveTab }: FundProps) {
     </div>
   );
 }
+
