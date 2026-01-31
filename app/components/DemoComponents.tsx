@@ -1,16 +1,10 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { useAccount, useWalletClient, usePublicClient } from "wagmi";
-import { encodeAbiParameters, parseUnits, type Abi, formatUnits, isAddress } from "viem";
+import { useAccount, useSmartAccountClient, useSendUserOperation } from "@account-kit/react";
+import { encodeAbiParameters, parseUnits, type Abi, formatUnits, isAddress, createPublicClient, http, encodeFunctionData, zeroAddress } from "viem";
+import { base } from "viem/chains";
 import { erc20Abi } from "viem";
-import {
-  Transaction,
-  TransactionButton,
-  TransactionStatus,
-  TransactionSponsor,
-} from "@coinbase/onchainkit/transaction";
-import type { TransactionError, LifecycleStatus } from "@coinbase/onchainkit/transaction";
 import unlockAbiJson from "../../lib/abis/Unlock.json";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -256,11 +250,10 @@ export function Features({ setActiveTab }: FeaturesProps) {
               <button
                 key={index}
                 onClick={() => goToTier(index)}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  index === activeTier
-                    ? "bg-[var(--app-accent)]"
-                    : "bg-[var(--app-foreground-muted)] hover:bg-[var(--app-foreground)]"
-                }`}
+                className={`w-2 h-2 rounded-full transition-colors ${index === activeTier
+                  ? "bg-[var(--app-accent)]"
+                  : "bg-[var(--app-foreground-muted)] hover:bg-[var(--app-foreground)]"
+                  }`}
                 aria-label={`Go to ${tiers[index].name} tier`}
               />
             ))}
@@ -290,32 +283,83 @@ type HomeProps = {
   setActiveTab: (tab: string) => void;
 };
 
+// Create a public client for read-only operations
+const publicClient = createPublicClient({
+  chain: base,
+  transport: http(),
+});
+
+const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const ZERO_ADDRESS = zeroAddress;
+
+const MEMBERSHIPS = [
+  {
+    name: "Brand",
+    address: "0x9c3744c96200a52d05a630d4aec0db707d7509be" as `0x${string}`,
+    price: "1000",
+    decimals: 6,
+    description: "Curated creator partnerships and collaborations for brands.",
+    color: "from-[#fbbf24] to-[#f59e42]",
+    billingPeriod: "per month",
+  },
+  {
+    name: "Investor",
+    address: "0x13b818daf7016b302383737ba60c3a39fef231cf" as `0x${string}`,
+    price: "100",
+    decimals: 6,
+    description: "Exclusive access to creative investment opportunities.",
+    color: "from-[#60a5fa] to-[#2563eb]",
+    billingPeriod: "per month",
+  },
+  {
+    name: "Creator",
+    address: "0xf7c4cd399395d80f9d61fde833849106775269c6" as `0x${string}`,
+    price: "30",
+    decimals: 6,
+    description: "Unlock creative resources, mentorship, and community.",
+    color: "from-[#34d399] to-[#059669]",
+    billingPeriod: "every 3 months",
+  },
+];
+
 export function Home({ setActiveTab }: HomeProps) {
   const [selected, setSelected] = useState<(typeof MEMBERSHIPS)[0] | null>(
     null,
   );
   const [email, setEmail] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [isApproved, setIsApproved] = useState(false);
-  const [checking, setChecking] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<bigint>(0n);
   const [balanceLoading, setBalanceLoading] = useState(false);
-  const { address } = useAccount();
-  const { data: walletClient } = useWalletClient();
-  const publicClient = usePublicClient();
+
+  const { address } = useAccount({ type: "LightAccount" });
+  const { client } = useSmartAccountClient({ type: "LightAccount" });
+
+  const { sendUserOperation, isSendingUserOperation } = useSendUserOperation({
+    client,
+    waitForTxn: true,
+    onSuccess: () => {
+      showToast("Membership purchased successfully!", "success");
+      closeModal();
+    },
+    onError: (error) => {
+      console.error("Transaction failed:", error);
+      showToast("Transaction failed. Please try again.", "error");
+    },
+  });
+
   const searchParams = useSearchParams();
   const { showToast } = useToast();
-  
+
   // Get referrer from URL params
   const referrerAddress = searchParams.get("referrer");
-  const referrer = referrerAddress && isAddress(referrerAddress) 
+  const referrer = referrerAddress && isAddress(referrerAddress)
     ? (referrerAddress as `0x${string}`)
     : ZERO_ADDRESS;
 
   // Fetch USDC balance when wallet is connected
   useEffect(() => {
     async function fetchUSDCBalance() {
-      if (!address || !publicClient) return;
+      if (!address) return;
       setBalanceLoading(true);
       try {
         const balance = await publicClient.readContract({
@@ -330,88 +374,10 @@ export function Home({ setActiveTab }: HomeProps) {
       }
       setBalanceLoading(false);
     }
-    if (address && publicClient) {
+    if (address) {
       fetchUSDCBalance();
     }
-  }, [address, publicClient]);
-
-  async function checkAllowance(membership: (typeof MEMBERSHIPS)[0]) {
-    if (!address || !membership || !publicClient) return;
-    setChecking(true);
-    try {
-      const allowance = await publicClient.readContract({
-        address: USDC_ADDRESS,
-        abi: erc20Abi,
-        functionName: "allowance",
-        args: [address, membership.address],
-      });
-      setIsApproved(
-        BigInt(allowance) >= parseUnits(membership.price, membership.decimals),
-      );
-    } catch {
-      setIsApproved(false);
-    }
-    setChecking(false);
-  }
-
-  async function approveUSDC(membership: (typeof MEMBERSHIPS)[0]) {
-    if (!walletClient || !membership) return;
-    // Check if the current network is Base (8453)
-    const baseChainIdHex = "0x2105"; // 8453 in hex
-    if (walletClient.chain?.id !== 8453) {
-      try {
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: baseChainIdHex }],
-        });
-      } catch (switchError: unknown) {
-        // Check if the error is an object and has a 'code' property
-        if (
-          typeof switchError === "object" &&
-          switchError !== null &&
-          "code" in switchError &&
-          (switchError as { code: number }).code === 4902
-        ) {
-          try {
-            await window.ethereum.request({
-              method: "wallet_addEthereumChain",
-              params: [
-                {
-                  chainId: baseChainIdHex,
-                  chainName: "Base Mainnet",
-                  rpcUrls: ["https://mainnet.base.org"],
-                  nativeCurrency: {
-                    name: "Ether",
-                    symbol: "ETH",
-                    decimals: 18,
-                  },
-                  blockExplorerUrls: ["https://basescan.org"],
-                },
-              ],
-            });
-          } catch {
-            showToast("Please add the Base network to your wallet to continue.", "error");
-            return;
-          }
-        } else {
-          showToast("Please switch to the Base network in your wallet to continue.", "error");
-          return;
-        }
-      }
-      // After switching, the user must re-try the transaction
-      return;
-    }
-    await walletClient.writeContract({
-      address: USDC_ADDRESS,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [
-        membership.address,
-        parseUnits(membership.price, membership.decimals),
-      ],
-    });
-    await checkAllowance(membership);
-  }
+  }, [address]);
 
   function handleCardClick(membership: (typeof MEMBERSHIPS)[0]) {
     // Prevent selection if wallet is not connected
@@ -421,15 +387,12 @@ export function Home({ setActiveTab }: HomeProps) {
     setSelected(membership);
     setShowModal(true);
     setEmail("");
-    setIsApproved(false);
-    checkAllowance(membership);
   }
 
   function closeModal() {
     setShowModal(false);
     setSelected(null);
     setEmail("");
-    setIsApproved(false);
   }
 
   // Helper to check if user has enough USDC for selected membership
@@ -445,7 +408,7 @@ export function Home({ setActiveTab }: HomeProps) {
     }
 
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    
+
     // Also create a share page URL for better social media previews
     const shareUrl = `${baseUrl}/share?membership=${encodeURIComponent(membership.name)}&referrer=${address}`;
 
@@ -467,6 +430,60 @@ export function Home({ setActiveTab }: HomeProps) {
       // Fall back to clipboard
       await navigator.clipboard.writeText(shareUrl);
       showToast("Share link copied to clipboard!", "success");
+    }
+  }
+
+  async function handlePurchase() {
+    if (!selected || !address) return;
+
+    try {
+      // Prepare approval call
+      const approvalData = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [
+          selected.address as `0x${string}`,
+          parseUnits(selected.price, selected.decimals)
+        ],
+      });
+
+      // Prepare purchase call
+      const purchaseData = encodeFunctionData({
+        abi: unlockAbiJson.abi as Abi,
+        functionName: "purchase",
+        args: [
+          [0], // values (for ERC20, always 0)
+          [address], // recipients
+          [referrer], // referrers
+          [address], // keyManagers
+          [
+            encodeAbiParameters(
+              [{ type: "string", name: "email" }],
+              [email],
+            ),
+          ], // data
+        ],
+      });
+
+      // Batch transactions: Approve + Purchase
+      sendUserOperation({
+        uo: [
+          {
+            target: USDC_ADDRESS,
+            data: approvalData,
+            value: 0n
+          },
+          {
+            target: selected.address as `0x${string}`,
+            data: purchaseData,
+            value: 0n
+          }
+        ]
+      });
+
+    } catch (error) {
+      console.error("Error preparing transaction:", error);
+      showToast("Error preparing transaction", "error");
     }
   }
 
@@ -544,11 +561,10 @@ export function Home({ setActiveTab }: HomeProps) {
           {MEMBERSHIPS.map((m) => (
             <div
               key={m.name}
-              className={`rounded-xl shadow-md border border-[var(--app-card-border)] bg-gradient-to-r ${m.color} p-4 flex items-center justify-between transition-transform ${
-                address
-                  ? "hover:scale-[1.02] cursor-pointer"
-                  : "opacity-50 cursor-not-allowed"
-              }`}
+              className={`rounded-xl shadow-md border border-[var(--app-card-border)] bg-gradient-to-r ${m.color} p-4 flex items-center justify-between transition-transform ${address
+                ? "hover:scale-[1.02] cursor-pointer"
+                : "opacity-50 cursor-not-allowed"
+                }`}
               onClick={(e) => {
                 if (address && !(e.target as HTMLElement).closest("button")) {
                   handleCardClick(m);
@@ -645,79 +661,17 @@ export function Home({ setActiveTab }: HomeProps) {
                 )}
               </div>
             )}
-            {!isApproved ? (
-              <Button
-                variant="primary"
-                size="md"
-                className="w-full mb-2"
-                onClick={() => approveUSDC(selected)}
-                disabled={checking || !email || !hasEnoughUSDC}
-              >
-                {checking ? "Checking..." : `Approve ${selected.price} USDC ${selected.billingPeriod}`}
-              </Button>
-            ) : (
-              <Transaction
-                calls={[
-                  {
-                    address: selected.address,
-                    abi: unlockAbiJson.abi as Abi,
-                    functionName: "purchase",
-                    args: [
-                      [0], // values (for ERC20, always 0)
-                      [address], // recipients
-                      [referrer], // referrers (from URL or ZERO_ADDRESS)
-                      [address], // keyManagers
-                      [
-                        encodeAbiParameters(
-                          [{ type: "string", name: "email" }],
-                          [email],
-                        ),
-                      ], // data
-                    ],
-                  },
-                ]}
-                isSponsored={true}
-                onError={(error: TransactionError) => {
-                  console.error("Transaction error details:", {
-                    code: error.code,
-                    error: error.error,
-                    message: error.message,
-                    fullError: error,
-                  });
-                  
-                  // Check for paymaster-related errors
-                  const errorMsg = (error.message || error.error || "").toLowerCase();
-                  if (errorMsg.includes("request denied") || errorMsg.includes("denied")) {
-                    console.warn("⚠️ Transaction denied. Possible causes:");
-                    console.warn("1. Contracts not allowlisted in paymaster");
-                    console.warn("2. Paymaster limits exceeded");
-                    console.warn("3. User rejected transaction");
-                    console.warn("Contract address:", selected.address);
-                    console.warn("Function: purchase");
-                    return;
-                  }
-                  
-                  if (errorMsg.includes("insufficient funds") || errorMsg.includes("enough funds")) {
-                    console.warn("⚠️ Funds error. This might mean:");
-                    console.warn("1. Paymaster sponsorship failed (contracts not allowlisted)");
-                    console.warn("2. Transaction fell back to user-paid gas");
-                    console.warn("3. User doesn't have enough ETH for gas");
-                    console.warn("Check paymaster allowlist at: https://portal.cdp.coinbase.com/products/paymaster/configuration");
-                  }
-                }}
-                onStatus={(status: LifecycleStatus) => {
-                  console.log("Transaction status:", status.statusName, status.statusData);
-                  if (status.statusName === "error") {
-                    const errorData = status.statusData as TransactionError;
-                    console.error("Transaction error status:", errorData);
-                  }
-                }}
-              >
-                <TransactionButton disabled={!hasEnoughUSDC} />
-                <TransactionSponsor />
-                <TransactionStatus />
-              </Transaction>
-            )}
+
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full mb-2"
+              onClick={handlePurchase}
+              disabled={isSendingUserOperation || !email || !hasEnoughUSDC}
+            >
+              {isSendingUserOperation ? "Processing..." : `Purchase for ${selected.price} USDC`}
+            </Button>
+
             <Button
               variant="outline"
               size="md"
@@ -891,9 +845,26 @@ const APPLICATION_ADDRESSES: Record<string, `0x${string}` | null> = {
 };
 
 function MyMemberships() {
-  const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const { address } = useAccount({ type: "LightAccount" });
+  const { client } = useSmartAccountClient({ type: "LightAccount" });
+  // publicClient is defined at file scope
   const { showToast } = useToast();
+
+  const { sendUserOperation, isSendingUserOperation } = useSendUserOperation({
+    client,
+    waitForTxn: true,
+    onSuccess: () => {
+      showToast("Membership transferred successfully!", "success");
+      handleCloseSendModal();
+      // Refresh memberships after successful transfer
+      setTimeout(() => checkMemberships(), 2000);
+    },
+    onError: (error) => {
+      console.error("Transfer failed:", error);
+      showToast("Transfer failed. Please check if you have the NFT and try again.", "error");
+    },
+  });
+
   const [memberships, setMemberships] = useState<
     Array<{
       name: string;
@@ -1001,7 +972,7 @@ function MyMemberships() {
 
   const formatExpirationDate = (timestamp?: bigint) => {
     if (!timestamp) return "Unknown";
-    
+
     // Check if the key never expires (type(uint256).max = 2^256 - 1)
     // This is approximately 115792089237316195423570985008687907853269984665640564039457584007913129639935
     // We check if it's greater than a reasonable future date (year 2100)
@@ -1009,14 +980,14 @@ function MyMemberships() {
     if (timestamp > maxReasonableTimestamp) {
       return "Never";
     }
-    
+
     const date = new Date(Number(timestamp) * 1000);
-    
+
     // Check if the date is valid
     if (isNaN(date.getTime())) {
       return "Never";
     }
-    
+
     return date.toLocaleDateString();
   };
 
@@ -1063,7 +1034,7 @@ function MyMemberships() {
       showToast("Membership address is missing. Please refresh your memberships.", "error");
       return;
     }
-    
+
     // Set selected membership and open modal
     setSelectedMembership({
       name: membership.name,
@@ -1098,7 +1069,7 @@ function MyMemberships() {
   };
 
   const handleCheckRecipient = async () => {
-    const addressToCheck = selectedApp 
+    const addressToCheck = selectedApp
       ? APPLICATION_ADDRESSES[selectedApp as keyof typeof APPLICATION_ADDRESSES]
       : recipientAddress;
 
@@ -1189,136 +1160,136 @@ function MyMemberships() {
               Connect your wallet to view your memberships
             </p>
           ) : loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--app-accent)]"></div>
-            <span className="ml-2 text-[var(--app-foreground-muted)]">
-              Checking memberships...
-            </span>
-          </div>
-        ) : (
-          <>
-            {activeMemberships.length > 0 && (
-              <div>
-                <h4 className="text-md font-semibold text-[var(--app-foreground)] mb-3 flex items-center">
-                  <Icon
-                    name="check"
-                    size="sm"
-                    className="text-green-500 mr-2"
-                  />
-                  Active Memberships
-                </h4>
-                <div className="space-y-2">
-                  {activeMemberships.map((membership) => (
-                    <div
-                      key={membership.name}
-                      className={`rounded-lg border border-[var(--app-card-border)] bg-gradient-to-r ${membership.color} p-3 flex items-center justify-between`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <Icon name="star" size="sm" className="text-white" />
-                        <div>
-                          <h5 className="font-medium text-white">
-                            {membership.name} Member
-                          </h5>
-                          {membership.keyId && (
-                            <p className="text-white/80 text-xs">
-                              Key #{membership.keyId}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right flex flex-col items-end gap-2">
-                        <p className="text-white text-xs">
-                          Expires:{" "}
-                          {formatExpirationDate(membership.expirationTime)}
-                        </p>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleShareReferralCode(membership)}
-                            className="bg-white/20 hover:bg-white/30 text-white border-white/30"
-                            icon={<Icon name="share" size="sm" />}
-                          >
-                            Share
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={(e?: React.MouseEvent<HTMLButtonElement>) => {
-                              e?.stopPropagation();
-                              handleSendClick(membership);
-                            }}
-                            className="bg-white/20 hover:bg-white/30 text-white border-white/30"
-                            icon={<Icon name="send" size="sm" />}
-                          >
-                            Send
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {inactiveMemberships.length > 0 && (
-              <div>
-                <h4 className="text-md font-semibold text-[var(--app-foreground-muted)] mb-3 flex items-center">
-                  <Icon
-                    name="plus"
-                    size="sm"
-                    className="text-[var(--app-foreground-muted)] mr-2"
-                  />
-                  Available Memberships
-                </h4>
-                <div className="space-y-2">
-                  {inactiveMemberships.map((membership) => (
-                    <div
-                      key={membership.name}
-                      className="rounded-lg border border-[var(--app-card-border)] bg-[var(--app-card-bg)] p-3 flex items-center justify-between opacity-60"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <Icon
-                          name="star"
-                          size="sm"
-                          className="text-[var(--app-foreground-muted)]"
-                        />
-                        <div>
-                          <h5 className="font-medium text-[var(--app-foreground-muted)]">
-                            {membership.name} Member
-                          </h5>
-                          <p className="text-[var(--app-foreground-muted)] text-xs">
-                            Not owned
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {memberships.length === 0 && (
-              <p className="text-[var(--app-foreground-muted)] text-center py-4">
-                No membership data available
-              </p>
-            )}
-
-            <div className="pt-3 border-t border-[var(--app-card-border)]">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={checkMemberships}
-                disabled={loading}
-                className="w-full"
-                icon={<Icon name="arrow-right" size="sm" />}
-              >
-                {loading ? "Refreshing..." : "Refresh Memberships"}
-              </Button>
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--app-accent)]"></div>
+              <span className="ml-2 text-[var(--app-foreground-muted)]">
+                Checking memberships...
+              </span>
             </div>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              {activeMemberships.length > 0 && (
+                <div>
+                  <h4 className="text-md font-semibold text-[var(--app-foreground)] mb-3 flex items-center">
+                    <Icon
+                      name="check"
+                      size="sm"
+                      className="text-green-500 mr-2"
+                    />
+                    Active Memberships
+                  </h4>
+                  <div className="space-y-2">
+                    {activeMemberships.map((membership) => (
+                      <div
+                        key={membership.name}
+                        className={`rounded-lg border border-[var(--app-card-border)] bg-gradient-to-r ${membership.color} p-3 flex items-center justify-between`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Icon name="star" size="sm" className="text-white" />
+                          <div>
+                            <h5 className="font-medium text-white">
+                              {membership.name} Member
+                            </h5>
+                            {membership.keyId && (
+                              <p className="text-white/80 text-xs">
+                                Key #{membership.keyId}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right flex flex-col items-end gap-2">
+                          <p className="text-white text-xs">
+                            Expires:{" "}
+                            {formatExpirationDate(membership.expirationTime)}
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleShareReferralCode(membership)}
+                              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+                              icon={<Icon name="share" size="sm" />}
+                            >
+                              Share
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={(e?: React.MouseEvent<HTMLButtonElement>) => {
+                                e?.stopPropagation();
+                                handleSendClick(membership);
+                              }}
+                              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+                              icon={<Icon name="send" size="sm" />}
+                            >
+                              Send
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {inactiveMemberships.length > 0 && (
+                <div>
+                  <h4 className="text-md font-semibold text-[var(--app-foreground-muted)] mb-3 flex items-center">
+                    <Icon
+                      name="plus"
+                      size="sm"
+                      className="text-[var(--app-foreground-muted)] mr-2"
+                    />
+                    Available Memberships
+                  </h4>
+                  <div className="space-y-2">
+                    {inactiveMemberships.map((membership) => (
+                      <div
+                        key={membership.name}
+                        className="rounded-lg border border-[var(--app-card-border)] bg-[var(--app-card-bg)] p-3 flex items-center justify-between opacity-60"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Icon
+                            name="star"
+                            size="sm"
+                            className="text-[var(--app-foreground-muted)]"
+                          />
+                          <div>
+                            <h5 className="font-medium text-[var(--app-foreground-muted)]">
+                              {membership.name} Member
+                            </h5>
+                            <p className="text-[var(--app-foreground-muted)] text-xs">
+                              Not owned
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {memberships.length === 0 && (
+                <p className="text-[var(--app-foreground-muted)] text-center py-4">
+                  No membership data available
+                </p>
+              )}
+
+              <div className="pt-3 border-t border-[var(--app-card-border)]">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={checkMemberships}
+                  disabled={loading}
+                  className="w-full"
+                  icon={<Icon name="arrow-right" size="sm" />}
+                >
+                  {loading ? "Refreshing..." : "Refresh Memberships"}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
       </Card>
 
       {/* Send Membership Modal */}
@@ -1343,7 +1314,7 @@ function MyMemberships() {
               <label className="block mb-2 text-sm font-medium text-[var(--app-foreground)]">
                 Recipient Wallet Address <span className="text-red-500">*</span>
               </label>
-              
+
               {/* Application Selection (Optional) */}
               {Object.keys(APPLICATION_ADDRESSES).length > 0 && (
                 <>
@@ -1365,7 +1336,7 @@ function MyMemberships() {
                   </div>
                 </>
               )}
-              
+
               {/* Wallet Address Input */}
               <input
                 type="text"
@@ -1398,16 +1369,14 @@ function MyMemberships() {
                   {checkingRecipient ? "Checking..." : "Check Recipient Membership"}
                 </Button>
                 {recipientHasMembership !== null && (
-                  <div className={`p-3 rounded-lg ${
-                    recipientHasMembership 
-                      ? "bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700"
-                      : "bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700"
-                  }`}>
-                    <p className={`text-sm ${
-                      recipientHasMembership 
-                        ? "text-green-800 dark:text-green-200"
-                        : "text-yellow-800 dark:text-yellow-200"
+                  <div className={`p-3 rounded-lg ${recipientHasMembership
+                    ? "bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700"
+                    : "bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700"
                     }`}>
+                    <p className={`text-sm ${recipientHasMembership
+                      ? "text-green-800 dark:text-green-200"
+                      : "text-yellow-800 dark:text-yellow-200"
+                      }`}>
                       {recipientHasMembership
                         ? "✓ Recipient already has this membership"
                         : "⚠ Recipient does not have this membership"}
@@ -1427,68 +1396,30 @@ function MyMemberships() {
             </div>
 
             {getRecipientAddress() && (
-              <Transaction
-                calls={[
-                  {
-                    address: selectedMembership.membershipAddress,
-                    abi: unlockAbiJson.abi as Abi,
-                    functionName: "safeTransferFrom",
-                    args: [
-                      address!, // from
-                      getRecipientAddress()!, // to
-                      BigInt(selectedMembership.keyId!), // tokenId
-                    ],
-                  },
-                ]}
-                isSponsored={true}
-                onError={(error: TransactionError) => {
-                  console.error("Transaction error details:", {
-                    code: error.code,
-                    error: error.error,
-                    message: error.message,
-                    fullError: error,
+              <Button
+                disabled={!getRecipientAddress() || !isAddress(getRecipientAddress()!) || isSendingUserOperation || !selectedMembership.keyId}
+                className="w-full mb-2"
+                onClick={() => {
+                  if (!address || !selectedMembership.keyId || !getRecipientAddress()) return;
+
+                  sendUserOperation({
+                    uo: {
+                      target: selectedMembership.membershipAddress,
+                      data: encodeFunctionData({
+                        abi: unlockAbiJson.abi,
+                        functionName: "safeTransferFrom",
+                        args: [
+                          address, // from
+                          getRecipientAddress()!, // to
+                          BigInt(selectedMembership.keyId!), // tokenId
+                        ],
+                      }),
+                    },
                   });
-                  
-                  // Check for paymaster-related errors
-                  const errorMsg = (error.message || error.error || "").toLowerCase();
-                  if (errorMsg.includes("request denied") || errorMsg.includes("denied")) {
-                    console.warn("⚠️ Transaction denied. Possible causes:");
-                    console.warn("1. Contracts not allowlisted in paymaster");
-                    console.warn("2. Paymaster limits exceeded");
-                    console.warn("3. User rejected transaction");
-                    console.warn("Contract address:", selectedMembership.membershipAddress);
-                    console.warn("Function: safeTransferFrom");
-                    return;
-                  }
-                  
-                  if (errorMsg.includes("insufficient funds") || errorMsg.includes("enough funds")) {
-                    console.warn("⚠️ Funds error. This might mean:");
-                    console.warn("1. Paymaster sponsorship failed (contracts not allowlisted)");
-                    console.warn("2. Transaction fell back to user-paid gas");
-                    console.warn("3. User doesn't have enough ETH for gas");
-                    console.warn("Check paymaster allowlist at: https://portal.cdp.coinbase.com/products/paymaster/configuration");
-                  }
-                }}
-                onStatus={(status: LifecycleStatus) => {
-                  console.log("Transaction status:", status.statusName, status.statusData);
-                  if (status.statusName === "error") {
-                    const errorData = status.statusData as TransactionError;
-                    console.error("Transaction error status:", errorData);
-                  }
-                }}
-                onSuccess={() => {
-                  handleCloseSendModal();
-                  // Refresh memberships after successful transfer
-                  setTimeout(() => checkMemberships(), 2000);
                 }}
               >
-                <TransactionButton 
-                  disabled={!getRecipientAddress() || !isAddress(getRecipientAddress()!)}
-                  className="w-full mb-2"
-                />
-                <TransactionSponsor />
-                <TransactionStatus />
-              </Transaction>
+                {isSendingUserOperation ? "Transferring..." : "Transfer Membership"}
+              </Button>
             )}
 
             <Button
@@ -1504,7 +1435,7 @@ function MyMemberships() {
       )}
 
       {/* Check Memberships for Any Address */}
-      <CheckMembershipsForAddress 
+      <CheckMembershipsForAddress
         checkMembershipsForAddress={checkMembershipsForAddress}
       />
     </>
@@ -1588,11 +1519,10 @@ function CheckMembershipsForAddress({
                 {results.map((membership) => (
                   <div
                     key={membership.name}
-                    className={`p-3 rounded-lg border ${
-                      membership.hasAccess
-                        ? "bg-green-100 dark:bg-green-900/20 border-green-300 dark:border-green-700"
-                        : "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700"
-                    }`}
+                    className={`p-3 rounded-lg border ${membership.hasAccess
+                      ? "bg-green-100 dark:bg-green-900/20 border-green-300 dark:border-green-700"
+                      : "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-[var(--app-foreground)]">
@@ -1633,37 +1563,4 @@ function CheckMembershipsForAddress({
   );
 }
 
-// Keep the existing membership functionality as a separate component
-const USDC_ADDRESS =
-  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" as `0x${string}`;
-const ZERO_ADDRESS =
-  "0x0000000000000000000000000000000000000000" as `0x${string}`;
-const MEMBERSHIPS = [
-  {
-    name: "Brand",
-    address: "0x9c3744c96200a52d05a630d4aec0db707d7509be" as `0x${string}`,
-    price: "1000",
-    decimals: 6,
-    description: "Curated creator partnerships and collaborations for brands.",
-    color: "from-[#fbbf24] to-[#f59e42]",
-    billingPeriod: "per month",
-  },
-  {
-    name: "Investor",
-    address: "0x13b818daf7016b302383737ba60c3a39fef231cf" as `0x${string}`,
-    price: "100",
-    decimals: 6,
-    description: "Exclusive access to creative investment opportunities.",
-    color: "from-[#60a5fa] to-[#2563eb]",
-    billingPeriod: "per month",
-  },
-  {
-    name: "Creator",
-    address: "0xf7c4cd399395d80f9d61fde833849106775269c6" as `0x${string}`,
-    price: "30",
-    decimals: 6,
-    description: "Unlock creative resources, mentorship, and community.",
-    color: "from-[#34d399] to-[#059669]",
-    billingPeriod: "every 3 months",
-  },
-];
+

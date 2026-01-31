@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount } from "@account-kit/react";
 import { Button, Card } from "./DemoComponents";
-import { FundButton } from "@coinbase/onchainkit/fund";
+
 import { getOnrampBuyUrl } from "../utils/coinbaseOnramp";
 // NOTE: To integrate Divvi referral, import getDataSuffix, submitReferral from '@divvi/referral-sdk' and useChainId from 'wagmi' when adding a custom transaction. See integration plan for details.
 
@@ -30,7 +30,7 @@ export function Fund({ setActiveTab }: FundProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState(30);
   const [selectedAsset, setSelectedAsset] = useState("USDC");
-  const { address } = useAccount();
+  const { address } = useAccount({ type: "LightAccount" });
 
   const amounts = [30, 100, 1000];
   const assets = ["USDC", "ETH"];
@@ -85,13 +85,13 @@ export function Fund({ setActiveTab }: FundProps) {
   // Alternative URL using the utility (fallback)
   const fallbackUrl = address
     ? getOnrampBuyUrl({
-        address,
-        defaultAsset: selectedAsset,
-        defaultNetwork: "base",
-        presetFiatAmount: selectedAmount,
-        fiatCurrency: "USD",
-        sessionToken: sessionData?.sessionToken,
-      })
+      address,
+      defaultAsset: selectedAsset,
+      defaultNetwork: "base",
+      presetFiatAmount: selectedAmount,
+      fiatCurrency: "USD",
+      sessionToken: sessionData?.sessionToken,
+    })
     : null;
 
   return (
@@ -150,12 +150,13 @@ export function Fund({ setActiveTab }: FundProps) {
         {/* Fund Button */}
         {!loading && sessionData && (
           <div className="space-y-4">
-            <FundButton
+            <Button
               className="w-full"
-              fundingUrl={onrampBuyUrl ?? fallbackUrl ?? undefined}
-              openIn="tab"
+              onClick={() => window.open(onrampBuyUrl ?? fallbackUrl ?? "", "_blank")}
               disabled={!address}
-            />
+            >
+              Add Funds
+            </Button>
           </div>
         )}
 
